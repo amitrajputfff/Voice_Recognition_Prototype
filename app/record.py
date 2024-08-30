@@ -1,7 +1,8 @@
 import numpy as np
 import scipy.io.wavfile as wav
+import librosa
+import scipy.signal as signal
 import sounddevice as sd
-
 
 def record_audio(file_name):
     try:
@@ -16,21 +17,29 @@ def record_audio(file_name):
         print(f"Error recording audio: {e}")
 
 
-def extract_features(file_name):
+def noise_reduction(data, sr):
+    # Apply a high-pass filter to remove low-frequency noise
+    sos = signal.butter(10, 100, 'hp', fs=sr, output='sos')
+    filtered = signal.sosfilt(sos, data)
+
+    return filtered
+
+def extract_mfcc_features(file_name):
     try:
-        fs, data = wav.read(file_name)
-        if data.ndim > 1:
-            data = np.mean(data, axis=1)  # Convert to mono if stereo
+        data, sr = librosa.load(file_name, sr=None)
+        data = noise_reduction(data, sr)
+
+        # Calculate MFCCs
+        mfccs = librosa.feature.mfcc(y=data, sr=sr, n_mfcc=13)
+        mfcc_mean = np.mean(mfccs, axis=1)
+        mfcc_std = np.std(mfccs, axis=1)
 
         # Convert to Python standard types
         features = {
-            'mean': float(np.mean(data)),
-            'std_dev': float(np.std(data)),
-            'max': float(np.max(data)),
-            'min': float(np.min(data))
+            'mfcc_mean': mfcc_mean.tolist(),
+            'mfcc_std': mfcc_std.tolist()
         }
 
-        print(f"Extracted features from {file_name}: {features}")
         return features
     except Exception as e:
         print(f"Error extracting features: {e}")
