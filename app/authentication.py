@@ -1,56 +1,51 @@
-import sqlite3
 import json
 import numpy as np
 from database import connect_db
 
+def save_features(features_list):
+    try:
+        conn = connect_db()
+        cursor = conn.cursor()
+        for features in features_list:
+            user_id = features['user_id']
+            phrase = features['phrase']
+            feature_data = json.dumps({
+                'mfcc_mean': features['mfcc_mean'],
+                'mfcc_std': features['mfcc_std']
+            })
+            cursor.execute('''
+                INSERT OR REPLACE INTO audio_features (user_id, phrase, features)
+                VALUES (?, ?, ?)
+            ''', (user_id, phrase, feature_data))
+        conn.commit()
+        conn.close()
+        print(f"Saved features for all samples.")
+    except Exception as e:
+        print(f"Error saving features: {e}")
 
-def save_features(user_id, features):
-    conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT OR REPLACE INTO audio_features (user_id, mean, std_dev, max, min)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (user_id, features['mean'], features['std_dev'], features['max'], features['min']))
-    conn.commit()
-    conn.close()
+def get_stored_features(user_id, phrase):
+    try:
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT features FROM audio_features WHERE user_id = ? AND phrase = ?', (user_id, phrase))
+        result = cursor.fetchone()
+        conn.close()
+        if result:
+            features = json.loads(result[0])
 
+            return features
+        return None
+    except Exception as e:
+        print(f"Error fetching stored features: {e}")
+        return None
 
-def get_stored_features(user_id):
-    conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT mean, std_dev, max, min FROM audio_features WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        return {
-            'mean': row[0],
-            'std_dev': row[1],
-            'max': row[2],
-            'min': row[3]
-        }
-    return None
+def authenticate(features, stored_features, tolerance=10.0):
+    diffs = []
+    for i in range(len(features['mfcc_mean'])):
+        mean_diff = abs(features['mfcc_mean'][i] - stored_features['mfcc_mean'][i])
+        std_diff = abs(features['mfcc_std'][i] - stored_features['mfcc_std'][i])
+        diffs.append(mean_diff + std_diff)
 
-
-def authenticate(features, stored_features):
-    # Calculate differences between features
-    max_diff = abs(features['max'] - stored_features['max'])
-    mean_diff = abs(features['mean'] - stored_features['mean'])
-    std_dev_diff = abs(features['std_dev'] - stored_features['std_dev'])
-    min_diff = abs(features['min'] - stored_features['min'])
-
-    # Print the differences for debugging
-    print(
-        f"Feature differences: mean_diff={mean_diff}, std_dev_diff={std_dev_diff}, max_diff={max_diff}, min_diff={min_diff}")
-
-    # Tolerance levels (adjusted based on observed differences)
-    tolerance = {
-        'mean': 0.2,  # Allowable difference in mean
-        'std_dev': 100,  # Allowable difference in standard deviation
-        'max': 300,  # Allowable difference in max value
-        'min': 300  # Allowable difference in min value
-    }
-
-    return (mean_diff < tolerance['mean'] and
-            std_dev_diff < tolerance['std_dev'] and
-            max_diff < tolerance['max'] and
-            min_diff < tolerance['min'])
+    mean_diff = np.mean(diffs)
+    print(f"Feature differences: {mean_diff}")
+    return mean_diff < tolerance
