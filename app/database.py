@@ -1,20 +1,17 @@
 import sqlite3
 
-DATABASE = 'voice_recognition.db'
-
 def connect_db():
-    return sqlite3.connect(DATABASE)
+    return sqlite3.connect('voice_features.db')  # Replace with your actual database file name
 
 def create_table():
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS audio_features (
-            user_id TEXT PRIMARY KEY,
-            mean REAL,
-            std_dev REAL,
-            max REAL,
-            min REAL
+            user_id TEXT,
+            phrase TEXT,
+            features BLOB,
+            PRIMARY KEY (user_id, phrase)
         )
     ''')
     conn.commit()
@@ -24,10 +21,10 @@ def add_features_column():
     conn = connect_db()
     cursor = conn.cursor()
     try:
-        cursor.execute("ALTER TABLE audio_features ADD COLUMN features TEXT")
-        conn.commit()
-    except sqlite3.OperationalError:
-        print("Column 'features' already exists.")
+        cursor.execute("ALTER TABLE audio_features ADD COLUMN phrase TEXT")
+    except sqlite3.OperationalError as e:
+        print(f"Error adding column: {e}")
+    conn.commit()
     conn.close()
 
 if __name__ == "__main__":
